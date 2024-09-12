@@ -248,7 +248,7 @@ draw_label_sunburst <- function(
 # function to add colors to a treemap object
 add_color <- function(treemap, color_palette = NULL, 
   color_type = "categorical", color_level = 1,
-  custom_range = NULL) {
+  custom_range = NULL,shade_col="BETA") {
   
   # CASE 1: CATEGORICAL
   if (color_type %in% c("categorical", "both")) {
@@ -266,6 +266,18 @@ add_color <- function(treemap, color_palette = NULL,
   total_area <- lapply(treemap@cells, function(tm_slot) {
     if (tm_slot$level %in% color_level) tm_slot$area
   }) %>% unlist %>% sum
+  ##################################
+  ####adjust color by another variable in the dataframe
+  ##################################
+  if (!is.null(shade_col)){
+  total_shade <- lapply(tm@cells, function(tm_slot) {
+    if (tm_slot$level  == length(tm@call$levels) ) tm@data[tm@data[[levels[2]]]==tm_slot$name,shade_col]
+  }) %>% unlist%>% abs %>% sum
+  
+  }
+
+  #######################################################################3
+  
   # determine number of required colors
   if (color_type == "cell_size") {
     color_list <- lapply(treemap@cells, function(tm_slot) {
@@ -321,18 +333,38 @@ add_color <- function(treemap, color_palette = NULL,
     cell_area <- lapply(treemap@cells, function(tm_slot) {
       if (tm_slot$level == length(treemap@call$levels)) tm_slot$area
     }) %>% unlist
+    #############################################
+    #overwrite here
+    ############################################
+    cell_shade <- lapply(treemap@cells, function(tm_slot) {
+      if (tm_slot$level == length(treemap@call$levels)) treemap@data[treemap@data[[levels[2]]]==tm_slot$name,shade_col]
+    }) %>% unlist
+    cell_shade<-abs(cell_shade)
+    ######################################################
+    
     # based on that, calculate individual lightness adjustment per cell
     treemap@cells <- lapply(treemap@cells, function(tm_slot) {
       # only adjust lightness for cells of lowest level
       if (tm_slot$level == length(treemap@call$levels)) {
         area <- tm_slot$area/total_area
-        corr_factor <- scales::rescale(area, from = range(cell_area/total_area), to = c(-0.2, 0.2))
+        # corr_factor <- scales::rescale(area, from = range(cell_area/total_area), to = c(-0.2, 0.2))
+        ##################################################################################
+        # overwrite the function for adding shade
+        #################################################################################
+        beta<- abs(treemap@data[treemap@data[[levels[2]]]==tm_slot$name,][[shade_col]]/total_shade)
+        # replace the area
+            corr_factor <- scales::rescale(beta, from = range(cell_shade/total_shade), to = c(-0.2, 0.2))
+        corr_factor<-corr_factor*-1
+        #print(tm_slot$name)
+        #print(corr_factor)
         # if lowest level is also chosen color_level, adjust lightness of cell
         if (tm_slot$level %in% color_level) {
           tm_slot$color <- colorspace::lighten(tm_slot$color, corr_factor)
         # else add a semitransparant color to the cell (parental cell is main color)
         } else {
           tm_slot$color <- grey(0.5+(2*corr_factor), alpha = (1.5*abs(corr_factor)))
+          # tm_slot$color <- grey(0.5+(2*corr_factor), alpha = 0.2+(abs(corr_factor)))
+          
         }
       }
       tm_slot
